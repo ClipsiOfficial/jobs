@@ -1,4 +1,18 @@
 services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    profiles:
+      - production
+    command: tunnel --no-autoupdate run
+    env_file:
+      - .env
+    networks:
+      - rabbitmq_network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
   rabbitmq:
     image: rabbitmq:management
     container_name: rabbitmq
