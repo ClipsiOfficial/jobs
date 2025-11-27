@@ -1,0 +1,57 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Debug consumer (news)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/consumer.py",
+      "args": ["news"],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "RABBITMQ_HOST": "localhost"
+      }
+    },
+    {
+      "name": "Python: Debug consumer (rss_atom)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/consumer.py",
+      "args": ["rss_atom"],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "RABBITMQ_HOST": "localhost"
+      }
+    },
+    {
+      "name": "Python: Debug consumer (searcher)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/consumer.py",
+      "args": ["searcher"],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "RABBITMQ_HOST": "localhost"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run all consumers (news + rss + searcher)",
+      "configurations": [
+        "Python: Debug consumer (news)",
+        "Python: Debug consumer (rss_atom)",
+        "Python: Debug consumer (searcher)"
+      ]
+    }
+  ]
+}
