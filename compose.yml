@@ -72,21 +72,6 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
-  ollama:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: ollama_base
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - rabbitmq_network
-volumes:
-  ollama_data:
-    name: ollama_data
 
 networks:
   rabbitmq_network:
