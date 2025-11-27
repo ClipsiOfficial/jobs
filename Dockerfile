@@ -12,3 +12,7 @@ CMD ["python", "consumer.py", "rss_atom"]
 
 FROM consumer_base AS searcher_base
 CMD ["python", "consumer.py", "searcher"]
+
+FROM ollama/ollama:latest AS ollama_base
+
+RUN ollama serve & sleep 5 && ollama pull fabriciocarraro/BSC-LT-salamandra-7B-instruct-gguf:latest
