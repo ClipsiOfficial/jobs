@@ -4,8 +4,76 @@ import newspaper
 from google import genai
 import os
 import requests
+from urllib.parse import urlparse
+import wordninja_enhanced as wordninja
 
 logger = logging.getLogger(__name__)
+
+def extract_source_name(url: str) -> str:
+    """Extract and format a readable source name from a URL.
+    
+    Examples:
+        'https://www.elpais.com/article' -> 'El Pais'
+        'https://lavanguardia.com/news' -> 'La Vanguardia'
+        'https://www.bbc.co.uk/news' -> 'Bbc'
+    
+    :param url: The URL to extract the source from
+    :return: A formatted source name
+    """
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        
+        # Remove 'www.' prefix if present
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        
+        # Get the main domain name (before the first dot)
+        parts = domain.split('.')
+        main_name = parts[0]
+        tld = parts[-1] if len(parts) > 1 else ''
+        
+        # Map TLD to language for better accuracy
+        tld_to_lang = {
+            'es': 'es',
+            'cat': 'es',  # Catalan domains, use Spanish as closest
+            'fr': 'fr',
+            'de': 'de',
+            'it': 'it',
+            'pt': 'pt',
+        }
+        
+        # Try to detect language from TLD, otherwise use multiple attempts
+        detected_lang = tld_to_lang.get(tld)
+        
+        best_words = []
+        min_parts = float('inf')
+        
+        # Try different language models and pick the one with fewer parts (more likely correct)
+        languages_to_try = [detected_lang] if detected_lang else ['es', 'en', 'fr', 'de', 'it', 'pt']
+        
+        for lang in languages_to_try:
+            try:
+                lm = wordninja.LanguageModel(language=lang)
+                words = lm.split(main_name)
+                # Prefer splits with fewer parts (more likely to be correct)
+                if len(words) < min_parts:
+                    min_parts = len(words)
+                    best_words = words
+            except Exception:
+                continue
+        
+        # If no language model worked, use default
+        if not best_words:
+            best_words = wordninja.split(main_name)
+        
+        # Capitalize each word
+        formatted = ' '.join(word.capitalize() for word in best_words)
+        
+        return formatted if formatted else "Unknown"
+    except Exception as e:
+        logger.warning(f"Failed to extract source from URL {url}: {e}")
+        return "Unknown"
 
 def handle_news_message(channel, method, properties, body):
     """Handle incoming news messages.
@@ -82,6 +150,7 @@ def handle_news_message(channel, method, properties, body):
             'url': url,
             'title': article.title,
             'summary': responseGemini.text,
+            'source': extract_source_name(url),
             'published_date': article.publish_date.isoformat() if article.publish_date else None,
         }
         responseSave = requests.post(
