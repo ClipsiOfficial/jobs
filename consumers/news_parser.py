@@ -4,6 +4,7 @@ import newspaper
 from google import genai
 import os
 import requests
+import tldextract
 from urllib.parse import urlparse
 import wordninja_enhanced as wordninja
 
@@ -21,17 +22,9 @@ def extract_source_name(url: str) -> str:
     :return: A formatted source name
     """
     try:
-        parsed = urlparse(url)
-        domain = parsed.netloc
-        
-        # Remove 'www.' prefix if present
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        
-        # Get the main domain name (before the first dot)
-        parts = domain.split('.')
-        main_name = parts[0]
-        tld = parts[-1] if len(parts) > 1 else ''
+        extracted = tldextract.extract(url)
+        main_name = extracted.domain
+        suffix = extracted.suffix
         
         # Map TLD to language for better accuracy
         tld_to_lang = {
@@ -44,7 +37,8 @@ def extract_source_name(url: str) -> str:
         }
         
         # Try to detect language from TLD, otherwise use multiple attempts
-        detected_lang = tld_to_lang.get(tld)
+        tld_end = suffix.split('.')[-1] if suffix else ''
+        detected_lang = tld_to_lang.get(tld_end)
         
         best_words = []
         min_parts = float('inf')
@@ -111,7 +105,8 @@ def handle_news_message(channel, method, properties, body):
             logger.error(f"Failed to check existing articles: {responseBackend.text}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             return
-        if responseBackend.json().exists:
+        backend_json = responseBackend.json()
+        if isinstance(backend_json, dict) and backend_json.get('exists', False):
             logger.info(f"URL already processed: {url}")
             channel.basic_ack(delivery_tag=method.delivery_tag)
             return
@@ -146,13 +141,26 @@ def handle_news_message(channel, method, properties, body):
         # Create payload to send back to backend API
         payload = {
             'keyword_id': keyword_id,
-            'rss_atom_id': rss_atom_id,
             'url': url,
             'title': article.title,
             'summary': responseGemini.text,
             'source': extract_source_name(url),
-            'published_date': article.publish_date.isoformat() if article.publish_date else None,
         }
+
+        # Only include numeric rss_atom_id if provided
+        if rss_atom_id not in (None, ''):
+            try:
+                payload['rss_atom_id'] = int(rss_atom_id)
+            except (TypeError, ValueError):
+                logger.warning(f"Invalid rss_atom_id value: {rss_atom_id}, skipping this field")
+
+        # Only include published_date when available
+        if article.publish_date:
+            try:
+                payload['published_date'] = article.publish_date.isoformat()
+            except Exception as e:
+                logger.warning(f"Could not serialize publish_date: {e}")
+
         responseSave = requests.post(
             f"{api_url}/admin/news",
             headers=headers,

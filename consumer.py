@@ -46,7 +46,6 @@ QUEUE_HANDLERS = {
     searcher_queue_name: handle_searcher_message,
 }
 
-
 class Consumer:
     PREFETCH_COUNT = 1
 
@@ -197,7 +196,6 @@ class Consumer:
             else:
                 self._connection.ioloop.stop()
             LOGGER.info('Stopped')
-
 
 class ReconnectingConsumer:
     def __init__(self, amqp_url, queue_name):
