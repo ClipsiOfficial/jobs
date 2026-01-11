@@ -131,7 +131,6 @@ def handle_searcher_message(channel, method, properties, body):
         
         if not topic or not keyword:
             LOGGER.error("No topic or keyword found in message")
-            channel.basic_ack(delivery_tag=method.delivery_tag, requeue=False)
             return
 
         LOGGER.info(f"Searching for: {query}")
@@ -139,7 +138,7 @@ def handle_searcher_message(channel, method, properties, body):
         api_key = os.environ.get('SERP_API_KEY')
         if not api_key:
             LOGGER.error("SERP_API_KEY not set in environment variables")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            # This is a configuration error, retrying won't help unless env vars change
             return
         
         params = {
@@ -155,28 +154,32 @@ def handle_searcher_message(channel, method, properties, body):
 
         search = GoogleSearch(params)
         results = search.get_dict()
+        
+        if results.get("error"):
+            # If API limits or errors, we might want to retry.
+            raise Exception(f"Errors returned from SerpApi: {results.get('error')}")
+
         news_results = results.get("organic_results", [])
         
         if not results:
-            LOGGER.error("No results returned from SerpApi")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            return
-        if results.get("error"):
-            LOGGER.error(f"Errors returned from SerpApi: {results.get('error')}")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            return
+            # Empty results might be legitimate or an error.
+            # If get_dict returns None/Empty but no error, it might be weird.
+            LOGGER.error("No results returned from SerpApi (empty dict)")
+            raise Exception("No results object returned from SerpApi")
+
         if not news_results:
             LOGGER.info("No news results found, setting keyword as fully processed")
             set_keyword_fully_processed(keyword_id)
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
 
         process_search_results(channel, news_results, project_id, keyword_id)
-        channel.basic_ack(delivery_tag=method.delivery_tag)
 
+    except json.JSONDecodeError as e:
+        LOGGER.error(f"JSON Decode Error: {e}")
+        return
     except Exception as e:
         LOGGER.error(f"Error processing message: {e}")
-        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        raise e
 
 def set_keyword_fully_processed(keyword_id):
     """Set the keyword as fully processed in the database by calling the appropriate API endpoint"""

@@ -87,7 +87,6 @@ def handle_news_message(channel, method, properties, body):
         url = message.get('url')
         if not url:
             logger.error("No URL found in message")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
         
         # Check if the URL is already processed (call backend API)
@@ -102,13 +101,11 @@ def handle_news_message(channel, method, properties, body):
             params={'url': url}
         )
         if responseBackend.status_code != 200:
-            logger.error(f"Failed to check existing articles: {responseBackend.text}")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            return
+            raise Exception(f"Failed to check existing articles: {responseBackend.text}")
+
         backend_json = responseBackend.json()
         if isinstance(backend_json, dict) and backend_json.get('exists', False):
             logger.info(f"URL already processed: {url}")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
 
         # Initialize Newspaper3 and Gemini GenAI client
@@ -167,15 +164,15 @@ def handle_news_message(channel, method, properties, body):
             json=payload
         )
         if responseSave.status_code != 201:
-            logger.error(f"Failed to save article: {responseSave.text}")
-            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-            return
-        logger.info(f"Successfully saved article for URL: {url}")
+            raise Exception(f"Failed to save article: {responseSave.text}")
 
-        channel.basic_ack(delivery_tag=method.delivery_tag)
+        logger.info(f"Successfully saved article for URL: {url}")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON Decode Error, discarding message: {e}")
+        # Discard message (return -> ack in consumer)
+        return
     except Exception as e:
         logger.error(f"Error processing message: {e}")
-        # Acknowledge the message to prevent it from being requeued indefinitely in case of error
-        # In a production system, you might want to dead-letter this
-        channel.basic_ack(delivery_tag=method.delivery_tag)
+        # Re-raise to trigger NACK in consumer
+        raise e

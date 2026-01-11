@@ -223,24 +223,20 @@ def handle_rss_atom_message(channel, method, properties, body):
         
         if not rss_atom_id:
             logger.error("Missing rss_atom_id in message")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
             
         if not feed_url:
             logger.error(f"Missing feed_url in message for rss_atom_id={rss_atom_id}")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
             
         if not keywords:
             logger.warning(f"No keywords provided for feed {feed_url}, skipping")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
         
         # Fetch and parse the feed
         feed = extractor.fetch_feed(feed_url)
         if not feed:
             logger.warning(f"Could not fetch feed: {feed_url}")
-            channel.basic_ack(delivery_tag=method.delivery_tag)
             return
         
         # Process each entry in the feed
@@ -293,13 +289,12 @@ def handle_rss_atom_message(channel, method, properties, body):
             f"{processed_count} entries processed, {published_count} news items published, {skipped_old_count} skipped (too old)"
         )
         
-        channel.basic_ack(delivery_tag=method.delivery_tag)
-        
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in message: {e}")
-        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        # Return to ACK and discard
+        return
         
     except Exception as e:
         logger.error(f"Error processing RSS/Atom message: {e}", exc_info=True)
-        # Requeue on unexpected errors for retry
-        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        # Re-raise to NACK and retry
+        raise e

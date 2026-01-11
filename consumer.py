@@ -156,10 +156,17 @@ class Consumer:
     def on_message(self, _unused_channel, basic_deliver, properties, body):
         LOGGER.info(f'Received message # {basic_deliver.delivery_tag} from {properties.app_id}')
         try:
+            # Ejecutamos el handler.
+            # NOTA: Los handlers NO deben hacer ack/nack manual, solo procesar.
             self._handler(_unused_channel, basic_deliver, properties, body)
-            self.acknowledge_message(basic_deliver.delivery_tag)
+            
+            # Si el handler termina sin errores, el Consumer centraliza el ACK aquí.
+            LOGGER.info(f'Message processed successfully {basic_deliver.delivery_tag}, sending ACK')
+            self._channel.basic_ack(basic_deliver.delivery_tag)
+            
         except Exception as e:
             LOGGER.error(f'Error processing message {basic_deliver.delivery_tag}: {e}')
+            # Si hubo un error, hacemos NACK para reencolar.
             self._channel.basic_nack(basic_deliver.delivery_tag, requeue=True)
 
     def acknowledge_message(self, delivery_tag):
