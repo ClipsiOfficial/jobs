@@ -7,3 +7,5 @@ wordninja-enhanced==3.1.1
 feedparser==6.0.12
 tldextract==5.3.1
 lxml_html_clean==0.4.3
+requests==2.32.5
+lxml==6.0.2

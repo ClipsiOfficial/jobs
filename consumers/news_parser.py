@@ -7,8 +7,33 @@ import requests
 import tldextract
 from urllib.parse import urlparse
 import wordninja_enhanced as wordninja
+import re
+from lxml.html import fromstring
 
 logger = logging.getLogger(__name__)
+
+# Regex for common catalog/navigation URL patterns
+CATALOG_PATTERNS = re.compile(
+    r'(/tag/|/tags/|/category/|/categoria/|/page/|/pagina/|/search/|/busqueda/|/author/|/autor/|/archive/|/hemeroteca/|/topic/|/temas/)',
+    re.IGNORECASE
+)
+
+def get_link_density(html_content: str) -> float:
+    """Calculate the ratio of text inside <a> tags vs total text."""
+    if not html_content:
+        return 0.0
+    try:
+        doc = fromstring(html_content)
+        text_content = doc.text_content().strip()
+        if not text_content:
+            return 0.0
+        
+        # Calculate text length inside <a> tags
+        link_text = "".join([a.text_content() for a in doc.xpath('//a')])
+        
+        return len(link_text) / len(text_content)
+    except Exception:
+        return 0.0
 
 def extract_source_name(url: str) -> str:
     """Extract and format a readable source name from a URL.
@@ -89,6 +114,10 @@ def handle_news_message(channel, method, properties, body):
             logger.error("No URL found in message")
             return
         
+        if CATALOG_PATTERNS.search(url):
+            logger.info(f"Filtered (URL Pattern): {url} matches catalog regex.")
+            return
+        
         # Check if the URL is already processed (call backend API)
         api_url = os.environ.get('API_URL', 'http://localhost:8787')
         headers = {
@@ -118,22 +147,45 @@ def handle_news_message(channel, method, properties, body):
         logger.info(f"Processing URL: {url}")
         article = newspaper.Article(url, config=config)
         article.download()
+        
+        # Check Link Density (Catalog Detection)
+        link_density = get_link_density(article.html)
+        if link_density > 0.65:  # Threshold: >65% of text is links
+            logger.info(f"Filtered (Link Density): {url} has high link density ({link_density:.2f}).")
+            return
+
         article.parse()
         logger.info(f"Successfully parsed article: {article.title}")
 
+        # Check text length (Short Content)
+        if len(article.text) < 250:
+            logger.info(f"Filtered (Short Content): {url} text length is {len(article.text)} chars.")
+            return
+
+        # Check Metadata (og:type)
+        og_type = article.meta_data.get('og', {}).get('type', '').lower()
+        if og_type in ['website', 'archive', 'blog', 'category']:
+            logger.info(f"Filtered (Metadata): {url} has og:type='{og_type}'.")
+            return
+
         # Send to Gemini Gemma via API for summarization
-        prompt = f"ROLE: You are a strict AI script specialized in news headlines. \
-                   INSTRUCTIONS: Read the following news article. Your ONLY task is to generate a concise summary. \
-                   LANGUAGE REQUIREMENT: Detect the language of the provided text. The output MUST be in the EXACT SAME language as the input text. \
-                   FORMAT: Maximum 100 characters. Strictly NO emojis, NO unnecessary symbols, and NO introductory text or explanations. \
-                   STRICT OUTPUT: Provide ONLY the summary text. \
-                   INPUT TITLE (CONTEXT): {article.title} \
+        prompt = f"ROLE: You are an expert AI news analyzer. \
+                   INSTRUCTIONS: Read the provided text. \
+                   1. VALIDATION: Determine if this is a SINGLE news article with a narrative. \
+                   If it is a list of links, a category page, a menu, or has no coherent news story, output EXACTLY: INVALID_CONTENT \
+                   2. SUMMARY: If it is a valid article, generate a concise summary in the detected language (max 100 chars, no emojis). \
+                   INPUT TITLE: {article.title} \
                    INPUT TEXT: {article.text}"
+        
         responseGemini = geminiClient.models.generate_content(
             model="gemma-3-27b-it",
             contents=prompt
         )
         logger.info(f"Summary from Gemini Gemma: {responseGemini.text[:50]}")
+
+        if 'INVALID_CONTENT' in responseGemini.text:
+            logger.info(f"Filtered (AI Validation): {url} flagged as non-article by Gemini.")
+            return
 
         # Create payload to send back to backend API
         payload = {
