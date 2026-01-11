@@ -114,8 +114,15 @@ def handle_news_message(channel, method, properties, body):
             logger.error("No URL found in message")
             return
         
+        # Check URL patterns
         if CATALOG_PATTERNS.search(url):
             logger.info(f"Filtered (URL Pattern): {url} matches catalog regex.")
+            return
+
+        # Check Root Path (Homepage)
+        parsed_u = urlparse(url)
+        if parsed_u.path.strip("/") == "":
+            logger.info(f"Filtered (Root Path): {url} is a homepage.")
             return
         
         # Check if the URL is already processed (call backend API)
@@ -157,10 +164,15 @@ def handle_news_message(channel, method, properties, body):
         article.parse()
         logger.info(f"Successfully parsed article: {article.title}")
 
+        # Check Title Length (Short titles are often categories/homes)
+        if len(article.title.split()) < 4:
+            logger.info(f"Filtered (Short Title): {url} title '{article.title}' is too short.")
+            return
+
         # Check text length (Short Content)
         if len(article.text) < 250:
-            logger.info(f"Filtered (Short Content): {url} text length is {len(article.text)} chars.")
-            return
+             logger.info(f"Filtered (Short Content): {url} text length is {len(article.text)} chars.")
+             return
 
         # Check Metadata (og:type)
         og_type = article.meta_data.get('og', {}).get('type', '').lower()
@@ -171,8 +183,14 @@ def handle_news_message(channel, method, properties, body):
         # Send to Gemini Gemma via API for summarization
         prompt = f"ROLE: You are an expert AI news analyzer. \
                    INSTRUCTIONS: Read the provided text. \
-                   1. VALIDATION: Determine if this is a SINGLE news article with a narrative. \
-                   If it is a list of links, a category page, a menu, or has no coherent news story, output EXACTLY: INVALID_CONTENT \
+                   1. CRITICAL VALIDATION: Determine if this is a VALID single news article. \
+                   REJECT IMMEDIATELY (Output: INVALID_CONTENT) if the text is: \
+                   - A list of headlines or links. \
+                   - A category page, menu, or navigation. \
+                   - A cookie consent notice or privacy policy. \
+                   - A subscription request. \
+                   - An error message (e.g. 'Please provide text'). \
+                   - A general description of a topic without a specific event. \
                    2. SUMMARY: If it is a valid article, generate a concise summary in the detected language (max 100 chars, no emojis). \
                    INPUT TITLE: {article.title} \
                    INPUT TEXT: {article.text}"
