@@ -182,16 +182,17 @@ def handle_news_message(channel, method, properties, body):
 
         # Send to Gemini Gemma via API for summarization
         prompt = f"ROLE: You are an expert AI news analyzer. \
-                   INSTRUCTIONS: Read the provided text. \
-                   1. CRITICAL VALIDATION: Determine if this is a VALID single news article. \
-                   REJECT IMMEDIATELY (Output: INVALID_CONTENT) if the text is: \
+                   INSTRUCTIONS: Read the provided text. Determine if this is a VALID single news article. \
+                   If is NOT a valid article, reject it IMMEDIATELY by responding with 'INVALID_CONTENT'. \
+                   REJECT CRITERIA: \
                    - A list of headlines or links. \
                    - A category page, menu, or navigation. \
                    - A cookie consent notice or privacy policy. \
                    - A subscription request. \
                    - An error message (e.g. 'Please provide text'). \
                    - A general description of a topic without a specific event. \
-                   2. SUMMARY: If it is a valid article, generate a concise summary in the detected language (max 100 chars, no emojis). \
+                   VALID ARTICLE OUTPUT FORMAT: If it is a valid article, generate a concise summary in the detected language of the article! (max 100 chars, no emojis). \
+                   Do not add any prefix, suffix, or quotes. It must be only the summary text. \
                    INPUT TITLE: {article.title} \
                    INPUT TEXT: {article.text}"
         
