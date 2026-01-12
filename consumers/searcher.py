@@ -121,7 +121,24 @@ def handle_searcher_message(channel, method, properties, body):
     :param bytes body: The message body
     """
     try:
-        message = json.loads(body)
+        # Robust decoding logic for uncertain encoding (UTF-8 vs Latin-1)
+        if isinstance(body, bytes):
+            try:
+                decoded_body = body.decode('utf-8')
+            except UnicodeDecodeError:
+                LOGGER.warning(f"UTF-8 decode failed for message {method.delivery_tag}. Falling back to Latin-1.")
+                try:
+                    # Common fallback for 0xf3 (ó) and other Western info
+                    decoded_body = body.decode('latin-1')
+                except UnicodeDecodeError:
+                    # Last resort: ignore or replace errors
+                    LOGGER.error(f"Latin-1 decode failed for message {method.delivery_tag}. Using errors='replace'.")
+                    decoded_body = body.decode('utf-8', errors='replace')
+        else:
+            # Already str
+            decoded_body = body
+
+        message = json.loads(decoded_body)
         project_id = message.get('project_id')
         topic = message.get('topic')
         keyword_id = message.get('keyword_id')

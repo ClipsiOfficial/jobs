@@ -212,8 +212,21 @@ def handle_rss_atom_message(channel, method, properties, body):
     extractor = RssAtomExtractor()
     
     try:
+        # Robust decoding logic for uncertain encoding (UTF-8 vs Latin-1)
+        if isinstance(body, bytes):
+            try:
+                decoded_body = body.decode('utf-8')
+            except UnicodeDecodeError:
+                logger.warning(f"UTF-8 decode failed. Falling back to Latin-1.")
+                try:
+                    decoded_body = body.decode('latin-1')
+                except UnicodeDecodeError:
+                    decoded_body = body.decode('utf-8', errors='replace')
+        else:
+            decoded_body = body
+
         # Parse incoming message
-        message = json.loads(body)
+        message = json.loads(decoded_body)
         logger.info(f"Processing RSS/Atom message: rss_atom_id={message.get('rss_atom_id')}")
         
         # Validate required fields
