@@ -23,3 +23,11 @@ COMPOSE_PROFILES=production docker compose up --build -d
 
 Notas:
 - `cloudflared` solo se añadirá al conjunto de servicios cuando el perfil `production` esté activo.
+
+## Equipo
+
+El equipo esta compuesto por:
+- Ariadna Mantilla
+- Eulalia Peiret
+- Ivan Moreno
+- Laura Apolzan
